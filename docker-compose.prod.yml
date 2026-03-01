@@ -1,0 +1,40 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:15-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_DB: ${DB_NAME:-chalkboard}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  backend:
+    build: ./backend
+    restart: always
+    depends_on:
+      - db
+    ports:
+      - "6000:8000"
+    environment:
+      - POSTGRES_SERVER=db
+      - POSTGRES_USER=${DB_USER:-postgres}
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-postgres}
+      - POSTGRES_DB=${DB_NAME:-chalkboard}
+      - FRONTEND_URL=https://chalkboard.ose.land
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: "https://chalkboard.ose.land/api/v1"
+    restart: always
+    ports:
+      - "6001:80"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
