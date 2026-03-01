@@ -87,7 +87,7 @@ async def websocket_endpoint(websocket: WebSocket, board_id: str, token: str):
                     model_id = data.get("payload", {}).get("modelId")
                     
                     asyncio.create_task(
-                        handle_ai_summon(board_id, text, canvas_data, chat_history, requester_id=str(user.id), snapshot=snapshot_data, model_id=model_id)
+                        handle_ai_summon(board_id, text, canvas_data, chat_history, requester_id=str(user.id), snapshot=snapshot_data, model_id=model_id, viewport=viewport_data)
                     )
                 
                 continue # Continue to next message after handling chat

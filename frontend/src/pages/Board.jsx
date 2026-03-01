@@ -413,12 +413,23 @@ export default function Board() {
 
             let snapshot = null;
             if (text.includes('@igor')) {
-                // Grab the first canvas element on the page (the Konva stage)
                 const canvas = document.querySelector('canvas');
                 if (canvas) {
-                    // Use JPEG to dramatically reduce base64 string size for the websocket
                     snapshot = canvas.toDataURL('image/jpeg', 0.5);
                 }
+            }
+
+            let viewportData = null;
+            if (window.__stageRef) {
+                const stage = window.__stageRef;
+                const scale = stage.scaleX();
+
+                viewportData = {
+                    centerX: Math.round((-stage.x() + window.innerWidth / 2) / scale),
+                    centerY: Math.round((-stage.y() + window.innerHeight / 2) / scale),
+                    width: Math.round(window.innerWidth / scale),
+                    height: Math.round(window.innerHeight / scale)
+                };
             }
 
             // Broadcast to others
@@ -428,7 +439,8 @@ export default function Board() {
                     text,
                     isAi: text.includes('@igor'),
                     snapshot: window.__stageRef ? window.__stageRef.toDataURL({ pixelRatio: 0.5 }) : null,
-                    modelId: modelId || 'google/gemini-2.5-flash'
+                    modelId: modelId || 'google/gemini-2.5-flash',
+                    viewport: viewportData
                 }
             }));
         }
