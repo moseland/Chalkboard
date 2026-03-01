@@ -59,10 +59,19 @@ export default function Board() {
                 const token = localStorage.getItem('token');
                 if (!token) throw new Error("No auth token");
 
-                // Replace http:// with ws:// for the socket connection
-                const wsUrl = import.meta.env.VITE_API_URL
-                    ? import.meta.env.VITE_API_URL.replace('http', 'ws')
-                    : 'ws://localhost:8000/api/v1';
+                // Construct WebSocket URL robustly from VITE_API_URL
+                const getWsUrl = () => {
+                    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
+                    if (apiUrl.startsWith('http')) {
+                        return apiUrl.replace('http', 'ws');
+                    }
+                    // Handle relative path (e.g., /api/v1)
+                    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                    const host = window.location.host;
+                    return `${protocol}//${host}${apiUrl}`;
+                };
+
+                const wsUrl = getWsUrl();
 
                 ws.current = new WebSocket(`${wsUrl}/ws/boards/${id}?token=${token}`);
 
