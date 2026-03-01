@@ -9,7 +9,7 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
       POSTGRES_DB: ${DB_NAME:-chalkboard}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - ./postgres_data:/var/lib/postgresql/data
 
   backend:
     build: ./backend
@@ -36,5 +36,3 @@ services:
     depends_on:
       - backend
 
-volumes:
-  postgres_data:
