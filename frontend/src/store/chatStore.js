@@ -4,10 +4,6 @@ const useChatStore = create((set) => ({
     messages: [],
     isOpen: false,
     aiActiveUntil: 0,
-
-    toggleChat: () => set((state) => ({ isOpen: !state.isOpen })),
-    setChatOpen: (isOpen) => set({ isOpen }),
-    aiActiveUntil: 0,
     selectedModel: 'google/gemini-2.5-flash',
 
     toggleChat: () => set((state) => ({ isOpen: !state.isOpen })),
