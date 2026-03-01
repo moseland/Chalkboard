@@ -37,7 +37,7 @@ def should_igor_respond(board_id: str, text: str) -> bool:
     
     return False
 
-async def handle_ai_summon(board_id: str, prompt: str, canvas_data: dict, chat_history: list, requester_id: str = None, snapshot: str = None, model_id: str = None):
+async def handle_ai_summon(board_id: str, prompt: str, canvas_data: dict, chat_history: list, requester_id: str = None, snapshot: str = None, model_id: str = None, viewport: dict = None):
     """
     Called asynchronously when Igor is triggered.
     Handles queueing if already thinking, and updates active state.
@@ -63,7 +63,7 @@ async def handle_ai_summon(board_id: str, prompt: str, canvas_data: dict, chat_h
         return
 
     try:
-        await _process_ai_request(board_id, prompt, canvas_data, chat_history, requester_id, snapshot, model_id)
+        await _process_ai_request(board_id, prompt, canvas_data, chat_history, requester_id, snapshot, model_id, viewport)
         
         # 3. Check for pending context that arrived during processing
         while pending_context.get(board_id):
@@ -71,12 +71,12 @@ async def handle_ai_summon(board_id: str, prompt: str, canvas_data: dict, chat_h
             combined_prompt = " [Follow-up context]: " + " | ".join(next_prompts)
             logger.info(f"Processing queued context for {board_id}: {combined_prompt}")
             # Refresh canvas/chat context potentially? For now, just continue with combined
-            await _process_ai_request(board_id, combined_prompt, canvas_data, chat_history, requester_id, snapshot, model_id)
+            await _process_ai_request(board_id, combined_prompt, canvas_data, chat_history, requester_id, snapshot, model_id, viewport)
             
     finally:
         thinking_boards[board_id] = False
 
-async def _process_ai_request(board_id: str, prompt: str, canvas_data: dict, chat_history: list, requester_id: str = None, snapshot: str = None, model_id: str = None):
+async def _process_ai_request(board_id: str, prompt: str, canvas_data: dict, chat_history: list, requester_id: str = None, snapshot: str = None, model_id: str = None, viewport: dict = None):
     """Internal method to call the LLM and broadcast response."""
     if not settings.OPENROUTER_API_KEY:
         logger.error("OPENROUTER_API_KEY is not set.")
@@ -103,11 +103,22 @@ async def _process_ai_request(board_id: str, prompt: str, canvas_data: dict, cha
     )
 
     try:
+        viewport_context = ""
+        if viewport:
+            viewport_context = f"""
+# USER VIEWPORT
+The user's screen is currently centered at (X: {viewport.get('centerX', 0)}, Y: {viewport.get('centerY', 0)}).
+The visible canvas area is {viewport.get('width', 1000)}px wide and {viewport.get('height', 800)}px high.
+CRITICAL: You MUST place all newly created objects, drawings, and images near this center point so the user can see them! Do NOT place them at (0,0) unless the user is looking there.
+"""
+
         system_prompt = f"""You are Igor, an AI Team Member inside a real-time collaborative Whiteboard application called Chalkboard.
 You are participating in a group chat with human users who are drawing on the board.
 
 Here is the current Chat History (for context only):
 {json.dumps(chat_history[-10:], indent=2)}
+
+{viewport_context}
 
 When the user says "@igor", they are talking to you. Look at the attached image of the whiteboard canvas and the conversation history to understand what they are asking. 
 
@@ -120,7 +131,7 @@ When the user says "@igor", they are talking to you. Look at the attached image 
   - `x` and `y` define the **CENTER** of rectangles, circles, and triangles. 
   - `rotation` is in degrees, rotating clockwise around the center.
   - Triangles point **UP** at 0 degrees. To make a triangle point RIGHT, use `"rotation": 90`. To point LEFT, use `"rotation": 270`.
-  - **ALIGNMENT IS CRITICAL:** If making a compound object from primitives, mathematically ensure the edges touch. Do not guess randomly scattered coordinates. Calculate offsets carefully from a chosen center point.
+  - **ALIGNMENT IS CRITICAL:** If making a compound object from primitives, mathematically ensure the edges touch. Do not guess randomly scattered coordinates. Calculate offsets carefully from the user's viewport center point.
 - **PREFER POLYGONS FOR COMPLEX ART:** For animals (like a fish, cat, bird), vehicles, or complex irregular objects, **DO NOT use basic scattered shapes**. Instead, use the `polygon` shape type and provide a continuous array of absolute `points` [x1, y1, x2, y2, ...] to draw the exact silhouette. 
 - **CLUSTERING / LAYOUT RULE:** When asked to group, categorize, tidy, or organize existing notes or shapes on the board, you MUST return an array of `update_node` actions. Calculate a clean, equidistant grid layout (modifying `x` and `y`) for each logical category so the items physically move into neat, categorized clusters.
 - Be brief, collaborative, and keep the conversation flowing.
@@ -146,7 +157,7 @@ ACTION OBJECT TYPES:
 **User:** "@igor draw a simple house"
 **Igor:**
 {{
-  "text": "I'll build a simple house using perfectly aligned basic shapes!",
+  "text": "I'll build a simple house using perfectly aligned basic shapes right where you're looking!",
   "actions": [
     {{
       "action": "draw_shape",
@@ -181,7 +192,7 @@ ACTION OBJECT TYPES:
 **User:** "@igor draw a fish"
 **Igor:**
 {{
-  "text": "I'll draw a fish using a polygon silhouette!",
+  "text": "I'll draw a fish using a polygon silhouette right here!",
   "actions": [
     {{
       "action": "draw_shape",
