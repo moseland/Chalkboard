@@ -115,17 +115,15 @@ When the user says "@igor", they are talking to you. Look at the attached image 
 - You are Igor, a natural team member. You are currently in an ACTIVE CONVERSATION.
 - Respond if the user is following up on your last action, asking a question, or providing new context.
 - If the user didn't tag you specifically but the message is clearly for you (e.g., "now make it blue"), act on it.
-- **CRITICAL DRAWING RULE:** When asked to "draw", "make", or "create" an object, scene, or item, you MUST construct it manually using multiple `draw_shape` actions (rectangles, circles, triangles) and the `polygon` tool. Do NOT use image generation tools for drawing requests.
-- **POLYGON USAGE:** Use `polygon` aggressively for any complex, custom, or irregular shapes that cannot be made with basic geometry (e.g., stars, clouds, custom icons).
-- **STRICT GENERATION RULE:** ONLY use `generate_image`, `sketch_to_image`, or `structure_to_image` when the user explicitly uses trigger words like "generate an image", "render a picture", or specifically requests an AI-generated photo.
+- **CRITICAL DRAWING RULE:** When asked to "draw", "make", or "create" an object, scene, or item, you MUST construct it manually. Do NOT use image generation tools for drawing requests unless they specifically ask for a photo or render.
+- **SPATIAL REASONING & SHAPES:**
+  - `x` and `y` define the **CENTER** of rectangles, circles, and triangles. 
+  - `rotation` is in degrees, rotating clockwise around the center.
+  - Triangles point **UP** at 0 degrees. To make a triangle point RIGHT, use `"rotation": 90`. To point LEFT, use `"rotation": 270`.
+  - **ALIGNMENT IS CRITICAL:** If making a compound object from primitives, mathematically ensure the edges touch. Do not guess randomly scattered coordinates. Calculate offsets carefully from a chosen center point.
+- **PREFER POLYGONS FOR COMPLEX ART:** For animals (like a fish, cat, bird), vehicles, or complex irregular objects, **DO NOT use basic scattered shapes**. Instead, use the `polygon` shape type and provide a continuous array of absolute `points` [x1, y1, x2, y2, ...] to draw the exact silhouette. 
 - **CLUSTERING / LAYOUT RULE:** When asked to group, categorize, tidy, or organize existing notes or shapes on the board, you MUST return an array of `update_node` actions. Calculate a clean, equidistant grid layout (modifying `x` and `y`) for each logical category so the items physically move into neat, categorized clusters.
 - Be brief, collaborative, and keep the conversation flowing.
-
-# CAPABILITIES & PROPERTIES
-- You can use "rotation" (degrees).
-- You can use "opacity" (0.0 to 1.0).
-- You can use "fillColor" (hex) for closed shapes.
-- For text: "html" (standard HTML tags for formatting), "width" (in pixels for wrapping), "fontSize" (base size), and "color" (base color).
 
 # ACTION SCHEMA
 You MUST output your ENTIRE response as a **single valid JSON object**.
@@ -143,14 +141,12 @@ ACTION OBJECT TYPES:
 6. `structure_to_image`: {{ "action": "structure_to_image", "prompt": "...", "x": int, "y": int }}
 7. `clear_board`: {{ "action": "clear_board" }}
 
-To clear the board, return: {{"action": "clear_board"}} inside the actions array.
-
 # EXAMPLES
 
 **User:** "@igor draw a simple house"
 **Igor:**
 {{
-  "text": "I'll build a simple house using some basic shapes!",
+  "text": "I'll build a simple house using perfectly aligned basic shapes!",
   "actions": [
     {{
       "action": "draw_shape",
@@ -166,32 +162,33 @@ To clear the board, return: {{"action": "clear_board"}} inside the actions array
       "shape_type": "triangle",
       "fillColor": "#EF4444",
       "x": 200,
-      "y": 150,
-      "width": 150,
-      "height": 150
+      "y": 180,
+      "width": 180,
+      "height": 100
     }},
     {{
       "action": "draw_shape",
       "shape_type": "rectangle",
       "fillColor": "#8B4513",
-      "x": 250,
-      "y": 375,
-      "width": 50,
-      "height": 75
+      "x": 200,
+      "y": 335,
+      "width": 40,
+      "height": 80
     }}
   ]
 }}
 
-**User:** "@igor can you draw a yellow star?"
+**User:** "@igor draw a fish"
 **Igor:**
 {{
-  "text": "One yellow star coming right up!",
+  "text": "I'll draw a fish using a polygon silhouette!",
   "actions": [
     {{
       "action": "draw_shape",
       "shape_type": "polygon",
-      "fillColor": "#FDE047",
-      "points": [150, 50, 170, 100, 220, 100, 180, 130, 190, 180, 150, 150, 110, 180, 120, 130, 80, 100, 130, 100]
+      "color": "#2563EB",
+      "fillColor": "#60A5FA",
+      "points": [ 300, 200, 350, 170, 420, 180, 480, 140, 460, 200, 480, 260, 420, 220, 350, 230 ]
     }}
   ]
 }}
@@ -208,23 +205,6 @@ To clear the board, return: {{"action": "clear_board"}} inside the actions array
       "y": 100,
       "width": 512,
       "height": 512
-    }}
-  ]
-}}
-
-**User:** "@igor can you write a note about our project mission with a big header?"
-**Igor:**
-{{
-  "text": "Sure! Here is a formatted note for the project mission.",
-  "actions": [
-    {{
-      "action": "draw_text",
-      "html": "<h1>Project Mission</h1><p>Our goal is to build the <b>best</b> collaborative whiteboard in the world. <i>Speed</i> and <i>simplicity</i> are key.</p>",
-      "x": 500,
-      "y": 500,
-      "width": 350,
-      "fontSize": 24,
-      "color": "#FFFFFF"
     }}
   ]
 }}
@@ -355,20 +335,39 @@ async def apply_ai_actions(board_id: str, actions: list):
                 await manager.broadcast(board_id, {"type": "clear"})
             
             elif act_type == "draw_shape":
-                new_shape = {
-                    "id": action.get("id"),
-                    "tool": "shape",
-                    "shapeType": action.get("shape_type", "rectangle"),
-                    "x": action.get("x", 100),
-                    "y": action.get("y", 100),
-                    "width": action.get("width", 100),
-                    "height": action.get("height", 100),
-                    "color": action.get("color", "#3B82F6"),
-                    "fillColor": action.get("fillColor"),
-                    "opacity": action.get("opacity", 1),
-                    "rotation": action.get("rotation", 0),
-                    "points": action.get("points", [])
-                }
+                shape_type = action.get("shape_type", "rectangle")
+                
+                # IMPORTANT FIX: Map "polygon" strictly to the polygon tool
+                # so the frontend doesn't fall back to rendering a Rectangle.
+                if shape_type == "polygon":
+                    new_shape = {
+                        "id": action.get("id"),
+                        "tool": "polygon",
+                        "x": action.get("x", 0), # Polygons usually rely on absolute points
+                        "y": action.get("y", 0),
+                        "color": action.get("color", "#3B82F6"),
+                        "fillColor": action.get("fillColor"),
+                        "opacity": action.get("opacity", 1),
+                        "rotation": action.get("rotation", 0),
+                        "points": action.get("points", []),
+                        "closed": True,
+                        "brushSize": action.get("brushSize", 5)
+                    }
+                else:
+                    new_shape = {
+                        "id": action.get("id"),
+                        "tool": "shape",
+                        "shapeType": shape_type,
+                        "x": action.get("x", 100),
+                        "y": action.get("y", 100),
+                        "width": action.get("width", 100),
+                        "height": action.get("height", 100),
+                        "color": action.get("color", "#3B82F6"),
+                        "fillColor": action.get("fillColor"),
+                        "opacity": action.get("opacity", 1),
+                        "rotation": action.get("rotation", 0)
+                    }
+                
                 canvas_data["shapes"].append(new_shape)
                 modified = True
                 # Broadcast the new shape to all clients immediately
@@ -418,7 +417,6 @@ async def apply_ai_actions(board_id: str, actions: list):
         logger.error(f"Failed to apply AI actions to DB: {e}")
     finally:
         db.close()
-
 
 async def _send_ai_error(board_id: str, message: str):
     payload = {
