@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Stage, Layer, Line, Group, Path, Text, Rect, Circle, RegularPolygon, Transformer, Image as KonvaImage } from 'react-konva';
+import { Stage, Layer, Line, Group, Path, Text, Rect, Circle, RegularPolygon, Transformer, Image as KonvaImage, Shape } from 'react-konva';
 import Konva from 'konva';
 import useCanvasStore from '../store/canvasStore';
 import useImage from 'use-image';
@@ -60,6 +60,164 @@ const URLImage = ({ line, tool, onSelect, onChange }) => {
             luminance={0}
             opacity={line.opacity !== undefined ? line.opacity : 1}
         />
+    );
+};
+
+const DataNode = ({ id, line, tool, isEditing, onSelect, onEdit, onChange }) => {
+    const [image, setImage] = useState(null);
+    const [measuredHeight, setMeasuredHeight] = useState(line.height || 200);
+    const imageRef = useRef(null);
+
+    useEffect(() => {
+        const updateImage = async () => {
+            const { dataUrl, height } = await renderRichTextToSVG({
+                html: line.html || line.text || '<p>New Node</p>',
+                width: line.width - 40, // Padding
+                color: '#e2e8f0',
+                fontSize: 16,
+                fontFamily: 'Inter, system-ui, sans-serif'
+            });
+            setMeasuredHeight(height);
+
+            const img = new window.Image();
+            img.onload = () => {
+                setImage(img);
+                if (imageRef.current) {
+                    imageRef.current.getLayer()?.batchDraw();
+                }
+            };
+            img.src = dataUrl;
+        };
+        updateImage();
+    }, [line.html, line.text, line.width]);
+
+    const [hoveredPort, setHoveredPort] = useState(null);
+    const portSize = 20;
+    const portHitSize = 30;
+    const ports = [
+        { name: 'top', x: line.width / 2, y: 0 },
+        { name: 'bottom', x: line.width / 2, y: line.height },
+        { name: 'left', x: 0, y: line.height / 2 },
+        { name: 'right', x: line.width, y: line.height / 2 },
+    ];
+
+    const pendingConnector = useCanvasStore(state => state.pendingConnector);
+    const setPendingConnector = useCanvasStore(state => state.setPendingConnector);
+
+    const handlePortMouseDown = (e, portName) => {
+        if (e) e.cancelBubble = true;
+        if (tool !== 'connector') return;
+        const stage = window.__stageRef;
+        const pos = stage.getRelativePointerPosition();
+        setPendingConnector({ fromId: line.id, fromPort: portName, x: pos.x, y: pos.y });
+    };
+
+    const handleNodeClick = (e) => {
+        onSelect(e);
+    };
+
+    return (
+        <Group
+            id={id || line.id}
+            name={id || line.id}
+            x={line.x}
+            y={line.y}
+            width={line.width}
+            height={line.height}
+            draggable={tool === 'select'}
+            onClick={handleNodeClick}
+            onTap={handleNodeClick}
+            onDblClick={() => onEdit(line)}
+            onDragMove={(e) => {
+                useCanvasStore.getState().updateNodePosition(line.id, e.target.x(), e.target.y());
+            }}
+            onDragEnd={(e) => {
+                onChange(line.id, {
+                    x: e.target.x(),
+                    y: e.target.y()
+                });
+            }}
+            onTransform={(e) => {
+                const node = e.target;
+                const newWidth = Math.max(50, node.width() * node.scaleX());
+                const newHeight = Math.max(30, node.height() * node.scaleY());
+                node.scaleX(1);
+                node.scaleY(1);
+                node.width(newWidth);
+                node.height(newHeight);
+            }}
+            onTransformEnd={(e) => {
+                const node = e.target;
+                onChange(line.id, {
+                    x: node.x(),
+                    y: node.y(),
+                    width: node.width(),
+                    height: node.height(),
+                    scaleX: 1,
+                    scaleY: 1,
+                    rotation: node.rotation()
+                });
+            }}
+        >
+            <Rect
+                width={line.width}
+                height={line.height}
+                fill={line.fillColor || 'rgba(30, 41, 59, 0.8)'}
+                stroke={line.color || '#334155'}
+                strokeWidth={2}
+                cornerRadius={8}
+            />
+            {image && (
+                <KonvaImage
+                    ref={imageRef}
+                    image={image}
+                    x={20}
+                    y={20}
+                    width={line.width - 40}
+                    height={measuredHeight}
+                    opacity={isEditing ? 0 : 1}
+                />
+            )}
+
+            {(tool === 'connector' || tool === 'select') && ports.map(port => (
+                <Group key={port.name}>
+                    {/* Invisible larger hit area */}
+                    <Rect
+                        x={port.x - portHitSize / 2}
+                        y={port.y - portHitSize / 2}
+                        width={portHitSize}
+                        height={portHitSize}
+                        fill="transparent"
+                        onMouseDown={(e) => handlePortMouseDown(e, port.name)}
+                        onTouchStart={(e) => handlePortMouseDown(e, port.name)}
+                        onMouseEnter={() => {
+                            setHoveredPort(port.name);
+                            document.body.style.cursor = 'crosshair';
+                        }}
+                        onMouseLeave={() => {
+                            setHoveredPort(null);
+                            document.body.style.cursor = 'default';
+                        }}
+                    />
+                    {/* Visible port square */}
+                    <Rect
+                        x={port.x - portSize / 2}
+                        y={port.y - portSize / 2}
+                        width={portSize}
+                        height={portSize}
+                        fill={hoveredPort === port.name ? "#818cf8" : "#4f46e5"}
+                        stroke="#ffffff"
+                        strokeWidth={hoveredPort === port.name ? 2 : 1}
+                        cornerRadius={4}
+                        scaleX={hoveredPort === port.name ? 1.2 : 1}
+                        scaleY={hoveredPort === port.name ? 1.2 : 1}
+                        offsetX={hoveredPort === port.name ? portSize * 0.1 : 0}
+                        offsetY={hoveredPort === port.name ? portSize * 0.1 : 0}
+                        listening={false}
+                    />
+                </Group>
+            ))}
+        </Group>
     );
 };
 
@@ -156,45 +314,90 @@ const Connector = ({ line, lines, tool, onSelect, onChange }) => {
 
     if (!fromNode || !toNode) return null;
 
-    // Center calculation
-    const getCenter = (node) => {
-        if (node.tool === 'shape') {
-            return { x: node.x, y: node.y };
-        }
-        if (node.width && node.height) {
-            return { x: node.x + node.width / 2, y: node.y + node.height / 2 };
-        }
-        if (node.points) {
-            // Very basic for lines: average of points
-            let xSum = 0, ySum = 0;
-            for (let i = 0; i < node.points.length; i += 2) {
-                xSum += node.points[i];
-                ySum += node.points[i + 1];
-            }
-            const count = node.points.length / 2;
-            return { x: (node.x || 0) + xSum / count, y: (node.y || 0) + ySum / count };
-        }
-        return { x: node.x || 0, y: node.y || 0 };
+    const getPortPos = (node, portName) => {
+        const width = (node.width || 0) * (node.scaleX || 1);
+        const height = (node.height || 0) * (node.scaleY || 1);
+
+        let offsetX = width / 2;
+        let offsetY = height / 2;
+
+        if (portName === 'top') { offsetX = width / 2; offsetY = 0; }
+        if (portName === 'bottom') { offsetX = width / 2; offsetY = height; }
+        if (portName === 'left') { offsetX = 0; offsetY = height / 2; }
+        if (portName === 'right') { offsetX = width; offsetY = height / 2; }
+
+        const rad = (node.rotation || 0) * (Math.PI / 180);
+        const cos = Math.cos(rad);
+        const sin = Math.sin(rad);
+        const dx = offsetX - width / 2;
+        const dy = offsetY - height / 2;
+        const rotatedX = dx * cos - dy * sin;
+        const rotatedY = dx * sin + dy * cos;
+
+        return {
+            x: (node.x || 0) + width / 2 + rotatedX,
+            y: (node.y || 0) + height / 2 + rotatedY
+        };
     };
 
-    const start = getCenter(fromNode);
-    const end = getCenter(toNode);
+    const getControlPointOffset = (portName) => {
+        const offset = 80;
+        if (portName === 'top') return { dx: 0, dy: -offset };
+        if (portName === 'bottom') return { dx: 0, dy: offset };
+        if (portName === 'left') return { dx: -offset, dy: 0 };
+        if (portName === 'right') return { dx: offset, dy: 0 };
+        return { dx: 0, dy: 0 };
+    };
 
-    const points = [start.x, start.y, end.x, end.y];
+    const start = getPortPos(fromNode, line.fromPort);
+    const end = getPortPos(toNode, line.toPort);
+
+    const cp1Offset = getControlPointOffset(line.fromPort);
+    const cp2Offset = getControlPointOffset(line.toPort);
+    const cp1 = { x: start.x + cp1Offset.dx, y: start.y + cp1Offset.dy };
+    const cp2 = { x: end.x + cp2Offset.dx, y: end.y + cp2Offset.dy };
+
+    // Build SVG-style path data for Shape
+    const pathData = `M ${start.x} ${start.y} C ${cp1.x} ${cp1.y}, ${cp2.x} ${cp2.y}, ${end.x} ${end.y}`;
+
+    // Calculate arrowhead angle from tangent at endpoint
+    const arrowAngle = Math.atan2(end.y - cp2.y, end.x - cp2.x) * (180 / Math.PI) + 90;
+    const arrowRadius = 16;
+    // Offset the arrow so its tip touches the port edge, not its center
+    const arrowAngleRad = Math.atan2(end.y - cp2.y, end.x - cp2.x);
+    const arrowTipX = end.x - Math.cos(arrowAngleRad) * (arrowRadius * 0.5);
+    const arrowTipY = end.y - Math.sin(arrowAngleRad) * (arrowRadius * 0.5);
 
     return (
-        <Line
-            id={line.id}
-            name={line.id}
-            points={points}
-            stroke={line.color || '#E2E8F0'}
-            strokeWidth={line.brushSize || 2}
-            lineCap="round"
-            lineJoin="round"
-            draggable={tool === 'select'}
-            onClick={onSelect}
-            onTap={onSelect}
-        />
+        <Group>
+            <Shape
+                sceneFunc={(context, shape) => {
+                    context.beginPath();
+                    context.moveTo(start.x, start.y);
+                    context.bezierCurveTo(cp1.x, cp1.y, cp2.x, cp2.y, end.x, end.y);
+                    context.fillStrokeShape(shape);
+                }}
+                id={line.id}
+                name={line.id}
+                stroke={line.color || '#E2E8F0'}
+                strokeWidth={line.brushSize || 2}
+                lineCap="round"
+                lineJoin="round"
+                hitStrokeWidth={12}
+                onClick={onSelect}
+                onTap={onSelect}
+            />
+            {line.connectorType === 'arrow' && (
+                <RegularPolygon
+                    x={arrowTipX}
+                    y={arrowTipY}
+                    sides={3}
+                    radius={arrowRadius}
+                    fill={line.color || '#E2E8F0'}
+                    rotation={arrowAngle}
+                />
+            )}
+        </Group>
     );
 };
 
@@ -207,8 +410,12 @@ export default function Canvas({ onStrokeComplete, onDeleteNodes }) {
     // Expose stage to window for AI snapshotting
     useEffect(() => {
         window.__stageRef = stageRef.current;
-        return () => { window.__stageRef = null; };
-    }, []);
+        window.__onStrokeComplete = onStrokeComplete;
+        return () => {
+            window.__stageRef = null;
+            window.__onStrokeComplete = null;
+        };
+    }, [onStrokeComplete]);
 
     const lines = useCanvasStore((state) => state.lines);
     const tool = useCanvasStore((state) => state.tool);
@@ -231,6 +438,56 @@ export default function Canvas({ onStrokeComplete, onDeleteNodes }) {
     // Drag Selection State
     const selectionRectRef = useRef(null);
     const [selectionBox, setSelectionBox] = useState(null);
+
+    const getNearestPort = (node, pointerPos) => {
+        const ports = [
+            { name: 'top', x: node.width / 2, y: 0 },
+            { name: 'bottom', x: node.width / 2, y: node.height },
+            { name: 'left', x: 0, y: node.height / 2 },
+            { name: 'right', x: node.width, y: node.height / 2 },
+        ];
+        const localPos = { x: pointerPos.x - node.x, y: pointerPos.y - node.y };
+        let nearestPort = ports[0];
+        let minDist = Infinity;
+        ports.forEach(p => {
+            const dist = Math.sqrt(Math.pow(localPos.x - p.x, 2) + Math.pow(localPos.y - p.y, 2));
+            if (dist < minDist) { minDist = dist; nearestPort = p; }
+        });
+        return nearestPort;
+    };
+
+    // Called on mousedown/touchstart over a node when connector tool is active
+    const handleConnectorDragStart = (e, node) => {
+        if (e) e.cancelBubble = true;
+        const stage = window.__stageRef;
+        const pointerPos = stage.getRelativePointerPosition();
+        const nearestPort = getNearestPort(node, pointerPos);
+        setPendingConnector({ fromId: node.id, fromPort: nearestPort.name, x: pointerPos.x, y: pointerPos.y });
+    };
+
+    // General node click/tap handler - routes to selection or connector drag start
+    const handleNodeInteraction = (e, node) => {
+        if (tool === 'connector' && node.tool === 'dataNode') {
+            handleConnectorDragStart(e, node);
+            return;
+        }
+        // If dataNode tool is active and we click an existing dataNode, open editor
+        if (tool === 'dataNode' && node.tool === 'dataNode') {
+            if (e) e.cancelBubble = true;
+            setEditingTextNode(node);
+            setEditingTextNodeId(node.id);
+            setSelectedNodeIds([]);
+            return;
+        }
+        // Normal selection
+        if (e && e.evt && e.evt.shiftKey) {
+            setSelectedNodeIds(prev =>
+                prev.includes(node.id) ? prev.filter(id => id !== node.id) : [...prev, node.id]
+            );
+        } else {
+            setSelectedNodeIds([node.id]);
+        }
+    };
 
     // Text Editing State
     const [editingTextNode, setEditingTextNode] = useState(null);
@@ -300,23 +557,12 @@ export default function Canvas({ onStrokeComplete, onDeleteNodes }) {
         }
 
         if (tool === 'connector') {
-            const id = e.target.name() || e.target.getParent()?.name();
-            if (id && id !== 'selection-box') {
-                const node = lines.find(l => l.id === id);
-                if (node && node.tool !== 'connector') {
-                    // Start connector drag
-                    const pos = e.target.getStage().getRelativePointerPosition();
-                    setSelectionBox({
-                        startX: pos.x,
-                        startY: pos.y,
-                        x: pos.x,
-                        y: pos.y,
-                        width: 0,
-                        height: 0,
-                        fromId: id // Abuse selectionBox temporarily to store state
-                    });
-                }
+            // If clicking on empty space, cancel any pending connection
+            const clickedOnEmpty = e.target === e.target.getStage();
+            if (clickedOnEmpty) {
+                setPendingConnector(null);
             }
+            // Node-level mousedown is handled by handleNodeInteraction
             return;
         }
 
@@ -360,6 +606,20 @@ export default function Canvas({ onStrokeComplete, onDeleteNodes }) {
                 }
                 return;
             }
+        }
+
+        if (tool === 'dataNode') {
+            // Only create a new Data Node if clicking on empty canvas
+            const clickedOnEmpty = e.target === e.target.getStage();
+            if (!clickedOnEmpty) return;
+            useCanvasStore.getState().addDataNode(point);
+            // Broadcast the new Data Node over WebSocket
+            const newDataNode = useCanvasStore.getState().lines[useCanvasStore.getState().lines.length - 1];
+            if (newDataNode && onStrokeComplete) {
+                onStrokeComplete(newDataNode);
+            }
+            setTool('select');
+            return;
         }
 
         startDrawing(point);
@@ -434,8 +694,18 @@ export default function Canvas({ onStrokeComplete, onDeleteNodes }) {
     };
 
 
+    const pendingConnector = useCanvasStore((state) => state.pendingConnector);
+    const setPendingConnector = useCanvasStore((state) => state.setPendingConnector);
+
     const handleMouseMove = (e) => {
         if (tool === 'pan') return;
+
+        if (tool === 'connector' && pendingConnector) {
+            const stage = e.target.getStage();
+            const point = stage.getRelativePointerPosition();
+            setPendingConnector({ ...pendingConnector, x: point.x, y: point.y });
+            return;
+        }
 
         if (tool === 'select') {
             if (selectionBox) { //... existing select logic
@@ -476,7 +746,7 @@ export default function Canvas({ onStrokeComplete, onDeleteNodes }) {
         }
     };
 
-    const handleMouseUp = () => {
+    const handleMouseUp = (e) => {
         if (holdTimeoutRef.current) clearTimeout(holdTimeoutRef.current);
 
         if (tool === 'pen' && isDrawing) {
@@ -520,18 +790,39 @@ export default function Canvas({ onStrokeComplete, onDeleteNodes }) {
             return;
         }
 
-        if (tool === 'connector' && selectionBox && selectionBox.fromId) {
-            const id = e.target.name() || e.target.getParent()?.name();
-            if (id && id !== 'selection-box' && id !== selectionBox.fromId) {
-                const node = lines.find(l => l.id === id);
-                if (node && node.tool !== 'connector') {
-                    const newConn = useCanvasStore.getState().addConnector(selectionBox.fromId, id);
-                    if (onStrokeComplete) {
-                        onStrokeComplete(newConn);
-                    }
+        if (tool === 'connector' && pendingConnector) {
+            // On mouseup, check if we released over a node
+            const stage = e?.target?.getStage?.() || window.__stageRef;
+            if (!stage) { setPendingConnector(null); return; }
+            const pointerPos = stage.getRelativePointerPosition();
+
+            // Find the data node we released over
+            const targetNode = lines.find(n => {
+                if (n.id === pendingConnector.fromId) return false;
+                if (n.tool !== 'dataNode') return false; // Only connect to Data Nodes
+                if (!n.width || !n.height) return false;
+                return (
+                    pointerPos.x >= n.x &&
+                    pointerPos.x <= n.x + (n.width || 0) &&
+                    pointerPos.y >= n.y &&
+                    pointerPos.y <= n.y + (n.height || 0)
+                );
+            });
+
+            if (targetNode) {
+                const nearestPort = getNearestPort(targetNode, pointerPos);
+                useCanvasStore.getState().addConnector(
+                    pendingConnector.fromId, pendingConnector.fromPort,
+                    targetNode.id, nearestPort.name
+                );
+                // Broadcast the new connector over WebSocket
+                const allLines = useCanvasStore.getState().lines;
+                const newConnector = allLines[allLines.length - 1];
+                if (newConnector && onStrokeComplete) {
+                    onStrokeComplete(newConnector);
                 }
             }
-            setSelectionBox(null);
+            setPendingConnector(null);
             return;
         }
 
@@ -589,6 +880,11 @@ export default function Canvas({ onStrokeComplete, onDeleteNodes }) {
         if (node && onStrokeComplete) {
             onStrokeComplete({ ...node, ...newAttrs });
         }
+    };
+
+    // Live drag: update the store position on every drag move so connectors follow
+    const handleLiveDrag = (e, nodeId) => {
+        useCanvasStore.getState().updateNodePosition(nodeId, e.target.x(), e.target.y());
     };
 
     // New for Presence
@@ -747,12 +1043,9 @@ export default function Canvas({ onStrokeComplete, onDeleteNodes }) {
                                     rotation={line.rotation || 0}
                                     opacity={line.opacity !== undefined ? line.opacity : 1}
                                     draggable={tool === 'select'}
-                                    onClick={(e) => {
-                                        // Selection handled by handleMouseDown on stage
-                                    }}
-                                    onTap={(e) => {
-                                        // Selection handled by handleMouseDown on stage
-                                    }}
+                                    onClick={(e) => handleNodeInteraction(e, line)}
+                                    onTap={(e) => handleNodeInteraction(e, line)}
+                                    onDragMove={(e) => handleLiveDrag(e, line.id)}
                                     onDragEnd={(e) => {
                                         handleNodeChange(line.id, {
                                             x: e.target.x(),
@@ -787,18 +1080,7 @@ export default function Canvas({ onStrokeComplete, onDeleteNodes }) {
                                     line={line}
                                     tool={tool}
                                     isEditing={editingTextNodeId === line.id}
-                                    onSelect={(e) => {
-                                        if (tool === 'select') {
-                                            const id = line.id;
-                                            if (e.evt.shiftKey) {
-                                                setSelectedNodeIds(prev =>
-                                                    prev.includes(id) ? prev.filter(oid => oid !== id) : [...prev, id]
-                                                );
-                                            } else {
-                                                setSelectedNodeIds([id]);
-                                            }
-                                        }
-                                    }}
+                                    onSelect={(e) => handleNodeInteraction(e, line)}
                                     onEdit={(nodeToEdit) => {
                                         setEditingTextNode(nodeToEdit);
                                         setEditingTextNodeId(nodeToEdit.id);
@@ -807,14 +1089,19 @@ export default function Canvas({ onStrokeComplete, onDeleteNodes }) {
                                     onChange={handleNodeChange}
                                 />
                             );
-                        } else if (line.tool === 'image') {
+                        } else if (line.tool === 'dataNode') {
                             return (
-                                <URLImage
+                                <DataNode
                                     key={line.id || i}
+                                    id={line.id}
                                     line={line}
                                     tool={tool}
-                                    onSelect={(e) => {
-                                        // Handled by handleMouseDown
+                                    isEditing={editingTextNodeId === line.id}
+                                    onSelect={(e) => handleNodeInteraction(e, line)}
+                                    onEdit={(nodeToEdit) => {
+                                        setEditingTextNode(nodeToEdit);
+                                        setEditingTextNodeId(nodeToEdit.id);
+                                        setSelectedNodeIds([]);
                                     }}
                                     onChange={handleNodeChange}
                                 />
@@ -826,22 +1113,32 @@ export default function Canvas({ onStrokeComplete, onDeleteNodes }) {
                                     line={line}
                                     lines={lines}
                                     tool={tool}
-                                    onSelect={(e) => {
-                                        if (tool === 'select') {
-                                            setSelectedNodeIds([line.id]);
-                                        }
+                                    onSelect={() => {
+                                        if (tool === 'select') setSelectedNodeIds([line.id]);
                                     }}
+                                    onChange={handleNodeChange}
+                                />
+                            );
+                        } else if (line.tool === 'image') {
+                            return (
+                                <URLImage
+                                    key={line.id || i}
+                                    line={line}
+                                    tool={tool}
+                                    onSelect={(e) => handleNodeInteraction(e, line)}
+                                    onChange={handleNodeChange}
                                 />
                             );
                         }
 
                         return (
                             <Line
+                                key={line.id || i}
                                 id={line.id}
                                 name={line.id}
                                 points={line.points}
-                                stroke={line.color}
-                                strokeWidth={line.brushSize || (line.tool === 'eraser' ? 20 : 5)}
+                                stroke={line.tool === 'eraser' ? '#0f172a' : (line.color || '#E2E8F0')}
+                                strokeWidth={line.brushSize || 5}
                                 tension={line.tool === 'polygon' ? 0 : 0.5}
                                 closed={line.closed || false}
                                 fill={line.closed ? (line.fillColor && line.fillColor !== 'transparent' ? line.fillColor : `${line.color}33`) : null}
@@ -858,10 +1155,16 @@ export default function Canvas({ onStrokeComplete, onDeleteNodes }) {
                                 opacity={line.opacity !== undefined ? line.opacity : 1}
                                 draggable={tool === 'select'}
                                 onClick={(e) => {
-                                    // Handled by handleMouseDown
-                                }}
-                                onTap={(e) => {
-                                    // Handled by handleMouseDown
+                                    if (tool === 'select') {
+                                        const id = line.id;
+                                        if (e.evt.shiftKey) {
+                                            setSelectedNodeIds(prev =>
+                                                prev.includes(id) ? prev.filter(oid => oid !== id) : [...prev, id]
+                                            );
+                                        } else {
+                                            setSelectedNodeIds([id]);
+                                        }
+                                    }
                                 }}
                                 onDragEnd={(e) => {
                                     handleNodeChange(line.id, {
@@ -882,6 +1185,47 @@ export default function Canvas({ onStrokeComplete, onDeleteNodes }) {
                             />
                         );
                     })}
+
+                    {pendingConnector && (() => {
+                        const fromNode = lines.find(n => n.id === pendingConnector.fromId);
+                        if (!fromNode) return null;
+                        const getPortPos = (node, portName) => {
+                            const width = (node.width || 0) * (node.scaleX || 1);
+                            const height = (node.height || 0) * (node.scaleY || 1);
+                            let offsetX = width / 2, offsetY = height / 2;
+                            if (portName === 'top') { offsetX = width / 2; offsetY = 0; }
+                            if (portName === 'bottom') { offsetX = width / 2; offsetY = height; }
+                            if (portName === 'left') { offsetX = 0; offsetY = height / 2; }
+                            if (portName === 'right') { offsetX = width; offsetY = height / 2; }
+                            const rad = (node.rotation || 0) * (Math.PI / 180);
+                            const cos = Math.cos(rad), sin = Math.sin(rad);
+                            const dx = offsetX - width / 2, dy = offsetY - height / 2;
+                            return { x: (node.x || 0) + width / 2 + (dx * cos - dy * sin), y: (node.y || 0) + height / 2 + (dx * sin + dy * cos) };
+                        };
+                        const start = getPortPos(fromNode, pendingConnector.fromPort);
+                        const endPos = { x: pendingConnector.x, y: pendingConnector.y };
+                        const cpOffset = 80;
+                        const cp1Offset = pendingConnector.fromPort === 'top' ? { dx: 0, dy: -cpOffset } :
+                            pendingConnector.fromPort === 'bottom' ? { dx: 0, dy: cpOffset } :
+                                pendingConnector.fromPort === 'left' ? { dx: -cpOffset, dy: 0 } :
+                                    { dx: cpOffset, dy: 0 };
+                        const cp1 = { x: start.x + cp1Offset.dx, y: start.y + cp1Offset.dy };
+                        const cp2 = { x: (start.x + endPos.x) / 2, y: (start.y + endPos.y) / 2 };
+                        return (
+                            <Shape
+                                sceneFunc={(context, shape) => {
+                                    context.beginPath();
+                                    context.moveTo(start.x, start.y);
+                                    context.bezierCurveTo(cp1.x, cp1.y, cp2.x, cp2.y, endPos.x, endPos.y);
+                                    context.fillStrokeShape(shape);
+                                }}
+                                stroke="#4f46e5"
+                                strokeWidth={2}
+                                dash={[5, 5]}
+                                lineCap="round"
+                            />
+                        );
+                    })()}
 
                     {/* Render Remote Cursors */}
                     {Object.entries(cursors).map(([userId, payload]) => {

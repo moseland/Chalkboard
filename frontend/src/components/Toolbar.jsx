@@ -19,11 +19,13 @@ import {
     ImagePlus,
     Maximize,
     GitGraph,
-    Activity
+    Activity,
+    Minus
 } from 'lucide-react';
 
 export default function Toolbar() {
     const [showShapeMenu, setShowShapeMenu] = useState(false);
+    const [showConnectorMenu, setShowConnectorMenu] = useState(false);
     const [showAiMenu, setShowAiMenu] = useState(false);
     const [isProcessingAi, setIsProcessingAi] = useState(false);
 
@@ -34,6 +36,8 @@ export default function Toolbar() {
     const selectedNodeIds = useCanvasStore((state) => state.selectedNodeIds);
 
     const setTool = useCanvasStore((state) => state.setTool);
+    const setConnectorType = useCanvasStore((state) => state.setConnectorType);
+    const connectorType = useCanvasStore((state) => state.connectorType);
     const setColor = useCanvasStore((state) => state.setColor);
     const setFillColor = useCanvasStore((state) => state.setFillColor);
     const setBrushSize = useCanvasStore((state) => state.setBrushSize);
@@ -228,14 +232,61 @@ export default function Toolbar() {
                 >
                     <Type size={18} />
                 </button>
-                <button
-                    className={`tw-tool-btn ${tool === 'connector' ? 'active' : ''}`}
-                    onClick={() => setTool('connector')}
-                    disabled={magicEraserMode || outpaintMode}
-                    title="Connector (C)"
-                >
-                    <GitGraph size={18} />
-                </button>
+                <div style={{ position: 'relative' }}>
+                    <button
+                        className={`tw-tool-btn ${['connector', 'dataNode'].includes(tool) ? 'active' : ''}`}
+                        onClick={() => setShowConnectorMenu(!showConnectorMenu)}
+                        disabled={magicEraserMode || outpaintMode}
+                        title="Connectors"
+                        style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
+                    >
+                        {tool === 'connector' ? (connectorType === 'arrow' ? <GitGraph size={18} /> : <Minus size={18} />) :
+                            tool === 'dataNode' ? <Square size={18} strokeWidth={2.5} /> :
+                                <GitGraph size={18} />}
+                        <ChevronDown size={14} opacity={0.5} />
+                    </button>
+                    {showConnectorMenu && (
+                        <div style={{
+                            position: 'absolute',
+                            bottom: '100%',
+                            left: '50%',
+                            transform: 'translateX(-50%)',
+                            marginBottom: '0.5rem',
+                            background: 'rgba(30, 41, 59, 0.95)',
+                            backdropFilter: 'blur(8px)',
+                            border: '1px solid rgba(255, 255, 255, 0.1)',
+                            borderRadius: '0.5rem',
+                            padding: '0.5rem',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '0.25rem',
+                            zIndex: 100,
+                            minWidth: '150px'
+                        }}>
+                            <button
+                                className={`tw-tool-btn ${tool === 'connector' && connectorType === 'arrow' ? 'active' : ''}`}
+                                onClick={() => { setTool('connector'); setConnectorType('arrow'); setShowConnectorMenu(false); }}
+                                style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'flex-start', padding: '0.5rem 1rem' }}
+                            >
+                                <GitGraph size={16} /> <span style={{ fontSize: '12px' }}>Arrow Connector</span>
+                            </button>
+                            <button
+                                className={`tw-tool-btn ${tool === 'connector' && connectorType === 'line' ? 'active' : ''}`}
+                                onClick={() => { setTool('connector'); setConnectorType('line'); setShowConnectorMenu(false); }}
+                                style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'flex-start', padding: '0.5rem 1rem' }}
+                            >
+                                <Minus size={16} /> <span style={{ fontSize: '12px' }}>Line Connector</span>
+                            </button>
+                            <button
+                                className={`tw-tool-btn ${tool === 'dataNode' ? 'active' : ''}`}
+                                onClick={() => { setTool('dataNode'); setShowConnectorMenu(false); }}
+                                style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'flex-start', padding: '0.5rem 1rem' }}
+                            >
+                                <Square size={16} strokeWidth={2.5} /> <span style={{ fontSize: '12px' }}>Data Node</span>
+                            </button>
+                        </div>
+                    )}
+                </div>
                 <div className="tw-divider" />
                 <div style={{ position: 'relative' }}>
                     <button

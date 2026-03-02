@@ -40,7 +40,13 @@ def register(
     if invite.is_used:
         raise HTTPException(status_code=400, detail="Invite already used")
         
-    if invite.expires_at < datetime.now(timezone.utc):
+    # SQLite stores naive datetimes by default. If invite.expires_at is naive, 
+    # we should compare it with a naive datetime.now().
+    now = datetime.now(timezone.utc)
+    if invite.expires_at.tzinfo is None:
+        now = datetime.now()
+        
+    if invite.expires_at < now:
         raise HTTPException(status_code=400, detail="Invite expired")
         
     if invite.email != user_in.email:

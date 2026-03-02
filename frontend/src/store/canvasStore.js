@@ -25,6 +25,7 @@ const useCanvasStore = create((set) => ({
     future: [],
     clipboard: [],
     connections: [], // { id, fromId, toId }
+    connectorType: 'arrow', // 'arrow' | 'line'
 
     setShowPreferencesModal: (show) => set({ showPreferencesModal: show }),
     updatePreferences: (newPrefs) => set((state) => ({ preferences: { ...state.preferences, ...newPrefs } })),
@@ -183,6 +184,7 @@ const useCanvasStore = create((set) => ({
     }),
 
     setTool: (tool) => set({ tool }),
+    setConnectorType: (type) => set({ connectorType: type }),
     setColor: (color) => set({ color }),
     setFillColor: (color) => set({ fillColor: color }),
     setBrushSize: (brushSize) => set({ brushSize }),
@@ -347,6 +349,10 @@ const useCanvasStore = create((set) => ({
         return { lines: newLines };
     }),
 
+    pendingConnector: null, // { fromId, fromPort, x, y }
+
+    setPendingConnector: (pending) => set({ pendingConnector: pending }),
+
     updateNode: (id, newAttrs) => {
         useCanvasStore.getState().saveHistory();
         set((state) => {
@@ -359,14 +365,29 @@ const useCanvasStore = create((set) => ({
         });
     },
 
-    addConnector: (fromId, toId) => {
+    // Lightweight position update for live drag — no history, no broadcast
+    updateNodePosition: (id, x, y) => {
+        set((state) => {
+            const lines = state.lines.slice();
+            const nodeIndex = lines.findIndex(l => l.id === id);
+            if (nodeIndex !== -1) {
+                lines[nodeIndex] = { ...lines[nodeIndex], x, y };
+            }
+            return { lines };
+        });
+    },
+
+    addConnector: (fromId, fromPort, toId, toPort) => {
         const state = useCanvasStore.getState();
         const id = `connector-${Date.now()}-${Math.random()}`;
         const newConnector = {
             id,
             tool: 'connector',
             fromId,
+            fromPort,
             toId,
+            toPort,
+            connectorType: state.connectorType,
             color: state.color,
             brushSize: 2,
             x: 0,
@@ -378,9 +399,35 @@ const useCanvasStore = create((set) => ({
         state.saveHistory();
         set((state) => ({
             lines: [...state.lines, newConnector],
-            connections: [...state.connections, { id, fromId, toId }]
+            connections: [...state.connections, { id, fromId, fromPort, toId, toPort }]
         }));
         return newConnector;
+    },
+
+    addDataNode: (point) => {
+        const state = useCanvasStore.getState();
+        state.saveHistory();
+        const id = `datanode-${Date.now()}-${Math.random()}`;
+        const newNode = {
+            id,
+            tool: 'dataNode',
+            x: point.x - 100,
+            y: point.y - 100,
+            width: 200,
+            height: 200,
+            html: '<p>New Node</p>',
+            color: state.color,
+            fillColor: 'rgba(30, 41, 59, 0.8)', // Slate-800 with opacity
+            scaleX: 1,
+            scaleY: 1,
+            rotation: 0,
+            opacity: 1
+        };
+        set((state) => ({
+            lines: [...state.lines, newNode],
+            selectedNodeIds: [id]
+        }));
+        return newNode;
     },
 
     addPolygonPoint: (point) => set((state) => {
@@ -430,16 +477,24 @@ const useCanvasStore = create((set) => ({
 
     deleteNodes: (ids) => {
         useCanvasStore.getState().saveHistory();
-        set((state) => ({
-            lines: state.lines.filter(l => !ids.includes(l.id)),
-            selectedNodeIds: state.selectedNodeIds.filter(id => !ids.includes(id))
-        }));
+        set((state) => {
+            // Also find and remove connector lines that reference any deleted node
+            const connectorIdsToRemove = state.lines
+                .filter(l => l.tool === 'connector' && (ids.includes(l.fromId) || ids.includes(l.toId)))
+                .map(l => l.id);
+            const allIdsToRemove = [...new Set([...ids, ...connectorIdsToRemove])];
+            return {
+                lines: state.lines.filter(l => !allIdsToRemove.includes(l.id)),
+                selectedNodeIds: state.selectedNodeIds.filter(id => !allIdsToRemove.includes(id)),
+                connections: state.connections.filter(c => !ids.includes(c.fromId) && !ids.includes(c.toId) && !ids.includes(c.id))
+            };
+        });
     },
 
     addNode: (node) => {
         useCanvasStore.getState().saveHistory();
         set((state) => ({
-            lines: [...state.lines, { id: `node-${Date.now()}-${Math.random()}`, ...node }]
+            lines: [...state.lines, { id: node.id || `node-${Date.now()}-${Math.random()}`, ...node }]
         }));
     },
 

@@ -378,12 +378,19 @@ export default function Board() {
     };
 
     const handleDeleteNodes = (nodeIds) => {
+        // Find connector lines that reference any of the deleted nodes
+        const allLines = useCanvasStore.getState().lines;
+        const connectorIdsToRemove = allLines
+            .filter(l => l.tool === 'connector' && (nodeIds.includes(l.fromId) || nodeIds.includes(l.toId)))
+            .map(l => l.id);
+        const allIdsToRemove = [...new Set([...nodeIds, ...connectorIdsToRemove])];
+
         useCanvasStore.getState().deleteNodes(nodeIds);
         if (ws.current && ws.current.readyState === WebSocket.OPEN) {
             ws.current.send(JSON.stringify({
                 type: 'delete_node',
                 payload: {
-                    nodeIds
+                    nodeIds: allIdsToRemove
                 }
             }));
         }
