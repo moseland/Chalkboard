@@ -9,6 +9,7 @@ const useCanvasStore = create((set) => ({
     isDrawing: false,
     selectedNodeIds: [],
     showSketchModal: false,
+    showMermaidModal: false,
     magicEraserMode: false,
     magicEraserTargetId: null,
     magicEraserStrokeIds: [],
@@ -23,10 +24,12 @@ const useCanvasStore = create((set) => ({
     history: [],
     future: [],
     clipboard: [],
+    connections: [], // { id, fromId, toId }
 
     setShowPreferencesModal: (show) => set({ showPreferencesModal: show }),
     updatePreferences: (newPrefs) => set((state) => ({ preferences: { ...state.preferences, ...newPrefs } })),
     setShowSketchModal: (show) => set({ showSketchModal: show }),
+    setShowMermaidModal: (show) => set({ showMermaidModal: show }),
     setSketchPayload: (payload) => set({ sketchPayload: payload }),
     setMagicEraserMode: (active, targetId = null) => set((state) => {
         if (!active && state.magicEraserMode) {
@@ -354,6 +357,30 @@ const useCanvasStore = create((set) => ({
             }
             return { lines };
         });
+    },
+
+    addConnector: (fromId, toId) => {
+        const state = useCanvasStore.getState();
+        const id = `connector-${Date.now()}-${Math.random()}`;
+        const newConnector = {
+            id,
+            tool: 'connector',
+            fromId,
+            toId,
+            color: state.color,
+            brushSize: 2,
+            x: 0,
+            y: 0,
+            scaleX: 1,
+            scaleY: 1,
+            rotation: 0
+        };
+        state.saveHistory();
+        set((state) => ({
+            lines: [...state.lines, newConnector],
+            connections: [...state.connections, { id, fromId, toId }]
+        }));
+        return newConnector;
     },
 
     addPolygonPoint: (point) => set((state) => {

@@ -150,6 +150,53 @@ const RichText = ({ id, line, tool, onSelect, onEdit, onChange, isEditing }) => 
         />
     );
 };
+const Connector = ({ line, lines, tool, onSelect, onChange }) => {
+    const fromNode = lines.find(n => n.id === line.fromId);
+    const toNode = lines.find(n => n.id === line.toId);
+
+    if (!fromNode || !toNode) return null;
+
+    // Center calculation
+    const getCenter = (node) => {
+        if (node.tool === 'shape') {
+            return { x: node.x, y: node.y };
+        }
+        if (node.width && node.height) {
+            return { x: node.x + node.width / 2, y: node.y + node.height / 2 };
+        }
+        if (node.points) {
+            // Very basic for lines: average of points
+            let xSum = 0, ySum = 0;
+            for (let i = 0; i < node.points.length; i += 2) {
+                xSum += node.points[i];
+                ySum += node.points[i + 1];
+            }
+            const count = node.points.length / 2;
+            return { x: (node.x || 0) + xSum / count, y: (node.y || 0) + ySum / count };
+        }
+        return { x: node.x || 0, y: node.y || 0 };
+    };
+
+    const start = getCenter(fromNode);
+    const end = getCenter(toNode);
+
+    const points = [start.x, start.y, end.x, end.y];
+
+    return (
+        <Line
+            id={line.id}
+            name={line.id}
+            points={points}
+            stroke={line.color || '#E2E8F0'}
+            strokeWidth={line.brushSize || 2}
+            lineCap="round"
+            lineJoin="round"
+            draggable={tool === 'select'}
+            onClick={onSelect}
+            onTap={onSelect}
+        />
+    );
+};
 
 
 
@@ -247,6 +294,27 @@ export default function Canvas({ onStrokeComplete, onDeleteNodes }) {
                             setSelectedNodeIds([id]);
                         }
                     }
+                }
+            }
+            return;
+        }
+
+        if (tool === 'connector') {
+            const id = e.target.name() || e.target.getParent()?.name();
+            if (id && id !== 'selection-box') {
+                const node = lines.find(l => l.id === id);
+                if (node && node.tool !== 'connector') {
+                    // Start connector drag
+                    const pos = e.target.getStage().getRelativePointerPosition();
+                    setSelectionBox({
+                        startX: pos.x,
+                        startY: pos.y,
+                        x: pos.x,
+                        y: pos.y,
+                        width: 0,
+                        height: 0,
+                        fromId: id // Abuse selectionBox temporarily to store state
+                    });
                 }
             }
             return;
@@ -447,6 +515,21 @@ export default function Canvas({ onStrokeComplete, onDeleteNodes }) {
 
                 const ids = shapes.map(node => node.name()).filter(Boolean);
                 setSelectedNodeIds([...new Set(ids)]);
+            }
+            setSelectionBox(null);
+            return;
+        }
+
+        if (tool === 'connector' && selectionBox && selectionBox.fromId) {
+            const id = e.target.name() || e.target.getParent()?.name();
+            if (id && id !== 'selection-box' && id !== selectionBox.fromId) {
+                const node = lines.find(l => l.id === id);
+                if (node && node.tool !== 'connector') {
+                    const newConn = useCanvasStore.getState().addConnector(selectionBox.fromId, id);
+                    if (onStrokeComplete) {
+                        onStrokeComplete(newConn);
+                    }
+                }
             }
             setSelectionBox(null);
             return;
@@ -734,6 +817,20 @@ export default function Canvas({ onStrokeComplete, onDeleteNodes }) {
                                         // Handled by handleMouseDown
                                     }}
                                     onChange={handleNodeChange}
+                                />
+                            );
+                        } else if (line.tool === 'connector') {
+                            return (
+                                <Connector
+                                    key={line.id || i}
+                                    line={line}
+                                    lines={lines}
+                                    tool={tool}
+                                    onSelect={(e) => {
+                                        if (tool === 'select') {
+                                            setSelectedNodeIds([line.id]);
+                                        }
+                                    }}
                                 />
                             );
                         }

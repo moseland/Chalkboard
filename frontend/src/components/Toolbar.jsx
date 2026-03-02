@@ -17,7 +17,9 @@ import {
     Camera,
     Wand2,
     ImagePlus,
-    Maximize
+    Maximize,
+    GitGraph,
+    Activity
 } from 'lucide-react';
 
 export default function Toolbar() {
@@ -40,6 +42,7 @@ export default function Toolbar() {
     const setMagicEraserMode = useCanvasStore((state) => state.setMagicEraserMode);
     const outpaintMode = useCanvasStore((state) => state.outpaintMode);
     const setOutpaintMode = useCanvasStore((state) => state.setOutpaintMode);
+    const setShowMermaidModal = useCanvasStore((state) => state.setShowMermaidModal);
 
     const colors = ['#E2E8F0', '#EF4444', '#3B82F6', '#10B981', '#F59E0B', '#8B5CF6'];
 
@@ -225,6 +228,14 @@ export default function Toolbar() {
                 >
                     <Type size={18} />
                 </button>
+                <button
+                    className={`tw-tool-btn ${tool === 'connector' ? 'active' : ''}`}
+                    onClick={() => setTool('connector')}
+                    disabled={magicEraserMode || outpaintMode}
+                    title="Connector (C)"
+                >
+                    <GitGraph size={18} />
+                </button>
                 <div className="tw-divider" />
                 <div style={{ position: 'relative' }}>
                     <button
@@ -285,6 +296,13 @@ export default function Toolbar() {
                                 style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'flex-start', padding: '0.5rem 1rem' }}
                             >
                                 <Maximize size={16} /> <span style={{ fontSize: '12px' }}>Outpaint / Expand</span>
+                            </button>
+                            <button
+                                className="tw-tool-btn"
+                                onClick={() => { setShowMermaidModal(true); setShowAiMenu(false); }}
+                                style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'flex-start', padding: '0.5rem 1rem' }}
+                            >
+                                <Activity size={16} /> <span style={{ fontSize: '12px' }}>Mermaid Diagram</span>
                             </button>
                         </div>
                     )}

@@ -16,6 +16,7 @@ import OutpaintOverlay from '../components/OutpaintOverlay';
 import CanvasStatus from '../components/CanvasStatus';
 import ZoomControls from '../components/ZoomControls';
 import ManageAccessModal from '../components/ManageAccessModal'; // Added import
+import MermaidModal from '../components/MermaidModal';
 import { boards, auth } from '../api';
 import useCanvasStore from '../store/canvasStore';
 import useChatStore from '../store/chatStore';
@@ -29,7 +30,9 @@ export default function Board() {
     const setChatState = useChatStore(state => state.setMessages);
     const setAiActiveUntil = useChatStore(state => state.setAiActiveUntil);
     const showStockModal = useCanvasStore(state => state.showStockModal);
+    const showMermaidModal = useCanvasStore(state => state.showMermaidModal);
     const setShowStockModal = useCanvasStore(state => state.setShowStockModal);
+    const setShowMermaidModal = useCanvasStore(state => state.setShowMermaidModal);
     const [showAccessModal, setShowAccessModal] = useState(false); // Added state
     const [loading, setLoading] = useState(true);
     const [connected, setConnected] = useState(false);
@@ -505,6 +508,12 @@ export default function Board() {
             />
             <MagicEraserOverlay onDeleteNodes={handleDeleteNodes} onUpdateNode={handleUpdateNode} />
             <OutpaintOverlay onUpdateNode={handleUpdateNode} />
+            {showMermaidModal && (
+                <MermaidModal
+                    onClose={() => setShowMermaidModal(false)}
+                    onImageAdded={handleStrokeComplete}
+                />
+            )}
             <CanvasStatus />
             <ZoomControls />
         </div>
